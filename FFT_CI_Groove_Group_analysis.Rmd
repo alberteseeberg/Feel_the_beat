@@ -1,0 +1,236 @@
+---
+title: "FFT_Group_analysis"
+author: "Alberte Seeberg"
+date: "2024-06-05"
+output: pdf_document
+---
+
+```{r}
+library(pacman)
+#Loading packages & setting directories
+p_load(stringr, tidyr, ggplot2, lme4, car, emmeans, dplyr, readr, tidyverse)
+
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/EEG/FFT_all_evoked')
+data_path_snrs = 'SNRS'
+data_path_psds = 'PSDS'
+
+# List all CSV files in the directories
+files_list_snrs <- list.files(data_path_snrs, pattern = '.csv', full.names = TRUE)
+files_list_psds <- list.files(data_path_psds, pattern = '.csv', full.names = TRUE)
+
+freqs = read.csv('CI_102_freqs.csv', header = FALSE, sep = ",")
+```
+
+
+```{r}
+# Potentially proper setup
+start_time = Sys.time()
+
+read_and_process_file <- function(file_path) {
+  #chans <- c("F3", "Fz", "F4", "FC1", "FC2", "C3", "Cz", "C4")
+  #conds <- c('S','SH','H')
+  freq_cutoff <- 10
+  
+  # Extract group and ID from the file name
+  file_name <- basename(file_path)
+  group <- ifelse(grepl('^CI_', file_name), 'CI', 'NH')
+  id <- sub("^[A-Z]+_(\\d+)_.*\\.csv$", "\\1", file_name)
+  cond <- sub("^.*_(Sound|S_H|Haptics)_.*\\.csv$", "\\1", file_name)
+  chan <- sub("^.*_(F3|Fz|F4|FC1|FC2|C3|Cz|C4)_.*\\.csv$", "\\1", file_name)
+  
+  all_data <- data.frame()  # Create an empty df to store data frames
+  
+  data <- read.csv(file_path, header = FALSE, sep = ",")
+  data <- data[,1:which(freqs==freq_cutoff)] # sub-setting up to 10 Hz
+  n_trials <- nrow(data) # how many trials
+  data <- pivot_longer(data, cols = everything())
+  data$freqs <- rep(freqs[1:which(freqs==freq_cutoff),1], times=n_trials) # creating a freq
+  data$Channel <- chan
+  data$Condition <- cond
+  data$Group <- group
+  data$ID <- id
+  #all_data[[length(all_data) + 1]] <- data  # Add the data frame to the list
+  all_data <- rbind(all_data, data)
+
+  #return(do.call(rbind, all_data))  # Combine all data frames in the list
+  return(all_data)
+}
+
+
+# Read and process all files in both directories
+snrs <- do.call("rbind", lapply(files_list_snrs, read_and_process_file))
+psds <- do.call("rbind", lapply(files_list_psds, read_and_process_file))
+
+
+snrs$Group = as.factor(snrs$Group)
+snrs$ID = as.factor(snrs$ID)
+snrs$Channel = as.factor(snrs$Channel)
+snrs$Condition = as.factor(snrs$Condition)
+
+psds$Group = as.factor(psds$Group)
+psds$ID = as.factor(psds$ID)
+psds$Channel = as.factor(psds$Channel)
+psds$Condition = as.factor(psds$Condition)
+
+end_time = Sys.time()
+end_time - start_time
+
+write_csv(psds, "psds_combined.csv")
+write_csv(snrs, "snrs_combined.csv")
+
+```
+
+```{r}
+snrs = read.csv("snrs_combined.csv")
+
+plot_snrs <- snrs %>% group_by(ID, Group, Condition, freqs) %>% summarize(mean = mean(value))
+plot_snrs <- na.omit(plot_snrs)
+plot_snrs <- as.data.frame(plot_snrs)
+plot_snrs$Condition = as.character(plot_snrs$Condition)
+plot_snrs$Condition[plot_snrs$Condition == 'S_H'] = 'Sound + Haptics'
+plot_snrs$Condition <- factor(plot_snrs$Condition, levels = c('Sound', 'Sound + Haptics','Haptics'))
+
+
+
+snrs_test = na.omit(snrs)
+```
+
+##### PLOTS #####
+```{r}
+
+#Indvidual participants
+p = plot_snrs %>%
+  ggplot(aes(x = freqs, y = mean, color = ID), show.legend=FALSE) +
+  stat_summary(geom = "line", fun = mean) +
+  stat_summary(geom = "errorbar", fun.data = mean_se, width = 0.2) +
+  facet_wrap(~Group*Condition) +
+  labs(
+       x = "Frequency",
+       y = "SNRS")+
+  scale_x_continuous(limits = c(1.5,10), breaks = seq(min(plot_snrs$freqs), max(plot_snrs$freqs), by = 1)) +
+  scale_y_continuous(limits = c(0, 3)) +
+  geom_vline(xintercept = c(2, 4, 6, 8), linetype = "dashed", color = "red", size = 0.2)
+
+p + theme_minimal(base_size = 15) #+ scale_color_brewer(palette="Dark2")
+
+#One participant at a time
+p = ggplot(subset(snrs_test, ID %in% "204"), aes(x = freqs, y = value, color = Condition, group = Condition), show.legend=FALSE) +
+  stat_summary(geom = "smooth", fun = mean) +
+  stat_summary(fun.data = mean_se, geom = "ribbon",
+               fill = "pink", alpha = 0.2) +
+  facet_wrap(~Condition+Channel) +
+  labs(
+       x = "Frequency",
+       y = "SNRS")+
+  scale_x_continuous(limits = c(1.5,10), breaks = seq(min(snrs$freqs), max(snrs$freqs), by = 1)) +
+  geom_vline(xintercept = c(2, 4, 6, 8), linetype = "dashed", color = "red", size = 0.2)
+
+p + theme_minimal(base_size = 15) #+ scale_color_brewer(palette="Dark2")
+
+#Mean all participants / Group
+p = plot_snrs_cond %>% 
+  #group_by(Group, freqs, Condition) %>%
+  #summarize(group_mean = mean(mean)) %>% 
+  ggplot(aes(x = freqs, y = mean, color = Condition, group = Condition), show.legend=FALSE) +
+  stat_summary(geom = "smooth", fun = mean) +
+  stat_summary(fun.data = mean_se, geom = "ribbon",
+               fill = Condition, alpha = 0.5, color = NA) +
+  facet_wrap(~Group+Condition) +
+  labs(
+       x = "Frequency",
+       y = "SNRS")+
+  scale_x_continuous(limits = c(1.5,10), breaks = seq(min(plot_snrs$freqs), max(plot_snrs$freqs), by = 1)) +
+  geom_vline(xintercept = c(2, 4, 6, 8), linetype = "dashed", color = "red", size = 0.2)
+
+p + theme_minimal(base_size = 15) #+ scale_color_brewer(palette="Dark2")
+                       
+
+
+custom_colors <- c("NH" = "steelblue", "CI" = "darkgoldenrod1")
+
+p = plot_snrs %>% 
+  ggplot(aes(x = freqs, y = mean, color = Group, group = Group, fill = Group), show.legend = FALSE) +
+  
+  scale_x_continuous(limits = c(1, 10), breaks = seq(min(plot_snrs$freqs), max(plot_snrs$freqs), by = 1)) +
+  
+  # Apply custom colors to both lines and ribbons
+  scale_colour_manual(values = custom_colors) +
+  scale_fill_manual(values = custom_colors) +
+  
+  geom_vline(xintercept = c(2, 4, 6, 8), linetype = "dashed", color = "black", size = 0.2) +
+  
+    # Add the ribbon for variance with less transparency (higher alpha)
+  stat_summary(fun.data = mean_se, geom = "ribbon", alpha = 0.5, color = NA) +
+  
+  
+  # Keep the smooth mean line with a thinner line by setting the size
+  stat_summary(geom = "smooth", fun = mean, se = FALSE, size = 0.8) +
+  
+  facet_wrap(~Condition+Group, ncol = 2) +
+  
+  labs(
+       x = "Frequency",
+       y = "SNR")
+
+p + theme_minimal(base_size = 15)
+
+
+
+```
+
+##### ANALYSIS #####
+```{r}
+options(digits =3)
+
+snrs_test2 = snrs_test[snrs_test$freqs == 2, ]
+snrs_test4 = snrs_test[snrs_test$freqs == 4, ]
+snrs_test8 = snrs_test[snrs_test$freqs == 8, ]
+snrs_foi = snrs_test[snrs_test$freqs %in% c(2, 4, 8), ]
+snrs_foi$Condition = as.character(snrs_foi$Condition)
+snrs_foi$Condition[snrs_foi$Condition == 'S_H'] = 'Sound + Haptics'
+snrs_foi$Condition = factor(snrs_foi$Condition, levels = c('Sound', 'Sound + Haptics','Haptics'))
+
+
+m0 <- lmer(value ~ 1 + (1|ID) + (1|freqs), data = snrs_foi,
+           REML = FALSE, control = lmerControl(optimizer = "nlminbwrap", calc.derivs = FALSE))
+
+m1 = update(m0,.~.+Condition) 
+m2 = update(m1,.~.+Group) 
+m3 = update(m2,.~.+Condition:Group)
+
+anova(m0, m1, m2, m3)
+
+anova(m1)
+
+summary(m1)
+
+```
+
+### POST-HOC ###
+```{r}
+#Post hoc contrasts
+emR <- emmeans(m1,  ~ Condition)
+
+
+emR %>% 
+    contrast('pairwise') %>% 
+    confint(by = NULL, adjust = "bonferroni") 
+
+#holm p val
+emR %>% 
+    contrast('pairwise', adjust = "bonferroni")
+
+
+#Post hoc contrasts within groups
+emR2 <- emmeans(m3,  ~ Condition|Group)
+
+
+emR2 %>% 
+    contrast('pairwise') %>% 
+    confint(by = NULL, adjust = "bonferroni") 
+
+#holm p val
+emR2 %>% 
+    contrast('pairwise', adjust = "bonferroni")
+
+```

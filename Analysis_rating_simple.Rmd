@@ -1,0 +1,216 @@
+---
+title: "Analysis ratings"
+author: "Alberte Seeberg"
+date: "2023-18-10"
+output: pdf_document
+root.dir: '/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating'
+---
+
+
+```{r}
+#Loading packages & setting directories
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(lme4)
+library(car)
+library(emmeans)
+library(afex)
+library(gridExtra)
+library(cowplot)
+library(dplyr)
+library(rmcorr)
+
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating/rating_data')
+
+CI = read.csv2('CI_ratings.csv')
+NH = read.csv2('NH_ratings.csv')
+
+
+CI$ID          = as.factor(CI$ID)
+CI$Complexity  = factor(CI$Complexity, levels = c("Metronome", "L", "M", "H"))
+CI$Version     = factor(CI$Version, levels = c("SN+BD+HH", "SN+BD", "SN+HH", "SN"))
+CI$Condition   = factor(CI$Condition, levels = c("A", "A+H", "H"))
+CI$Group       = as.factor(CI$Group)
+CI$Rating_type = as.factor(CI$Rating_type)
+
+NH$ID          = as.factor(NH$ID)
+NH$Complexity  = factor(NH$Complexity, levels = c("Metronome","L", "M", "H"))
+NH$Version     = factor(NH$Version, levels = c("SN+BD+HH", "SN+BD", "SN+HH", "SN"))
+NH$Condition   = factor(NH$Condition, levels = c("A", "A+H", "H"))
+NH$Group       = as.factor(NH$Group)
+NH$Rating_type = as.factor(NH$Rating_type)
+
+
+df = bind_rows(CI, NH)
+df$Condition = as.character(df$Condition)
+df$Condition[df$Condition=="A"] <- "S"
+df$Condition[df$Condition=="A+H"] <- "S+H"
+df$Condition = factor(df$Condition, levels = c("S", "S+H", "H"))
+
+df = df[!(df$ID %in% c("106", "110", "201","203", "209", "211", "212", "215","217","220")),]
+CI = CI[!(CI$ID %in% c("106", "110")),]
+NH = NH[!(NH$ID %in% c("201","203", "209", "211", "212", "215","217","220")),]
+
+CI$ID = factor(CI$ID, levels = unique(CI$ID))
+NH$ID = factor(NH$ID, levels = unique(NH$ID))
+df$ID = factor(df$ID, levels = unique(df$ID))
+
+df <- df[!df$Complexity == "Metronome",]
+
+df$Complexity = factor(df$Complexity, levels = unique(df$Complexity))
+
+df = df[-1]
+
+df_wide = df %>% pivot_wider(names_from='Rating_type',
+                    values_from='Rating')
+
+df_w_NH = df_wide[df_wide$Group=="NH", ]
+df_w_CI = df_wide[df_wide$Group=="CI", ]
+
+#Check correlation - Account for repeated measures
+corval = rmcorr(ID, Move, Pleasure, df_w_CI)
+plot(corval)
+corval
+
+```
+
+
+
+########                               ~*~*~*~*~*~*~*~*~*~*                             ##########
+#                                            plots!                                             #
+##############                         *~*~*~*~*~*~*~*~*~*~                           ###########
+
+
+```{r}
+
+test_df = aggregate(df$Rating,by=list(df$ID, df$Condition, df$Group), mean)
+
+test_df = plyr::rename(test_df, c("Group.1"="ID"))
+test_df = plyr::rename(test_df, c("Group.2"="Condition"))
+test_df = plyr::rename(test_df, c("Group.3"="Group"))
+test_df = plyr::rename(test_df, c("x"="Rating"))
+
+
+custom_colors <- c("NH" = "steelblue", "CI" = "darkgoldenrod1")
+
+p = ggplot(test_df, aes(x = Condition, y = Rating, group = Group, colour = Group)) +
+  geom_point(aes(colour = Group), 
+             position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.7)) +
+  scale_colour_manual(values = custom_colors) +
+  ylim(0, 100) +
+  theme_minimal(base_size = 15)
+
+p
+
+p = ggplot(test_df, aes(x = Condition, y = Rating, fill = Group)) +
+  geom_violin(position = position_dodge(0.8)) + 
+  geom_boxplot(width = 0.1, position = position_dodge(0.8)) + 
+  scale_fill_manual(values = custom_colors) +
+  scale_color_manual(values = rep("black", length(unique(test_df$Group)))) +
+  ylim(0, 100) +
+  theme_minimal(base_size = 15)+
+  theme(
+    axis.text.x = element_text(size = 14, margin = margin(b = 8)),  # Change size of Condition names
+    axis.text.y = element_text(size = 14, margin = margin(l = 7)),  # Change size of Rating values
+    axis.title.x = element_text(size = 16), # Change size of x-axis title
+    axis.title.y = element_text(size = 16),)
+p
+
+
+#pirateplot
+test_df$Group = factor(test_df$Group, levels = c("CI", "NH"))
+par(mfrow = c(1, 1))
+library(yarrr)
+pirateplot(formula = Rating ~ Group + Condition, data = test_df, xlab = "Group",ylab="Rating", theme=2, pal="espresso", cex.lab = 1.1, cex.axis = 1, ylim=c(0,100), cex.names = 0.7, avg.line.o=1, bar.f.o = .2, bean.b.o = .7, point.o = 0.3, point.pch = 1, back.col = "white")
+
+
+p = ggplot(test_df, aes(x = Condition, y = Rating, group = ID, colour = Group)) +
+  scale_color_manual(values = custom_colors) +
+  geom_point() +
+  geom_line() + # Assuming you have custom colors for participants
+  ylim(0, 100) +
+  facet_wrap(~ Group) +  # Facet by Group
+  theme_minimal(base_size = 15)   # Remove legend if ID colors are not needed in legend
+
+p
+
+
+```
+########                               ~*~*~*~*~*~*~*~*~*~*                             ##########
+#                                            analysis                                            #
+##############                         *~*~*~*~*~*~*~*~*~*~                           ###########
+
+
+```{r}
+
+m0 <- lmer(Rating ~ 1 + (1|ID), data = test_df,
+           REML = FALSE, control = lmerControl(optimizer = "nlminbwrap", calc.derivs = FALSE))
+
+m1 = update(m0,.~.+Condition) 
+m2 = update(m1,.~.+Group) 
+m3 = update(m2,.~.+Condition:Group)
+
+anova(m0, m1, m2, m3)
+
+anova(m1)
+
+summary(m1)
+
+par(mfrow = c(1, 1))
+#diagnostic plots for best model
+qqnorm(resid(m1))
+hist(resid(m1))
+plot(m1)
+```
+
+### POST HOCS ### 
+```{r}
+#Post hoc contrasts
+emR <- emmeans(m1,  ~ Condition)
+
+
+emR %>% 
+    contrast('pairwise') %>% 
+    confint(by = NULL, adjust = "bonferroni") 
+
+#holm p val
+emR %>% 
+    contrast('pairwise', adjust = "bonferroni")
+
+
+#Post hoc contrasts within groups
+emR2 <- emmeans(m3,  ~ Condition|Group)
+
+
+emR2 %>% 
+    contrast('pairwise') %>% 
+    confint(by = NULL, adjust = "bonferroni") 
+
+#holm p val
+emR2 %>% 
+    contrast('pairwise', adjust = "bonferroni")
+
+```
+
+
+
+#Demographics
+```{r}
+demo_NH = read.csv2("complete_an_NH.csv")
+demo_CI = read.csv2("complete_an_CI.csv")
+
+demo_CI = plyr::rename(demo_CI, c("Navn"="ID"))
+
+
+demo_CI = demo_CI[!(demo_CI$ID %in% c("101","106", "110")),]
+demo_NH = demo_NH[!(demo_NH$ID %in% c("201","203", "209", "211", "212", "215","217","220")),]
+
+demo_CI$Køn = as.factor(demo_CI$Køn)
+demo_CI$ID = as.factor(demo_CI$ID)
+demo_NH$Køn = as.factor(demo_NH$Køn)
+demo_NH$ID = as.factor(demo_NH$ID)
+
+summary(demo_CI)
+
+```

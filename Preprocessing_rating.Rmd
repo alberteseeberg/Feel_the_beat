@@ -1,0 +1,518 @@
+---
+title: "Preprocessing ratings"
+author: "Alberte Seeberg"
+date: "2023-05-05"
+output: pdf_document
+root.dir: '/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating'
+---
+
+
+```{r}
+#Loading packages & setting directories
+library(stringr)
+library(tidyr)
+library(ggplot2)
+library(lme4)
+library(car)
+library(emmeans)
+library(afex)
+library(gridExtra)
+library(cowplot)
+library(dplyr)
+
+homeDir = '/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating'
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating')
+data_path_CI = 'rating_data/CI'
+data_path_CI2 = 'rating_data/CI/Round_2'
+data_path_NH = 'rating_data/NH'
+data_path_NH2 = 'rating_data/NH/Round_2'
+
+files_CI <- list.files(data_path_CI, pattern = '.csv')
+files_CI2 <- list.files(data_path_CI2, pattern = '.csv')
+files_NH <- list.files(data_path_NH, pattern = '.csv')
+files_NH2 <- list.files(data_path_NH2, pattern = '.csv')
+```
+
+
+########                               ~*~*~*~*~*~*~*~*~*~*                             ##########
+#                                      Preprocessing CIs!                                     #
+##############                         *~*~*~*~*~*~*~*~*~*~                           ###########
+
+```{r include = FALSE}
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating/rating_data/CI')
+df_wide = do.call("rbind", lapply(files_CI,
+		read.csv, header=TRUE))
+
+df_wide$Version[df_wide$Version == "snare"] = "SN"
+df_wide$Version[df_wide$Version == "metronome"] = "SN"
+df_wide$Version[df_wide$Version == "snare+hi_hat"] = "SN+HH"
+df_wide$Version[df_wide$Version == "snare+bass_drum"] = "SN+BD"
+df_wide$Version[df_wide$Version == "snare+bass_drum+hi_hat"] = "SN+BD+HH"
+
+df_wide$Complexity[df_wide$Complexity == "baseline"] = "Metronome"
+
+df_wide$Condition[df_wide$Condition == "sound"] = "A"
+df_wide$Condition[df_wide$Condition == "haptics"] = "H"
+df_wide$Condition[df_wide$Condition == "sound_and_haptics"] = "A+H"
+
+#df_wide$Condition = as.factor(df_wide$Condition)
+df_wide$Version = as.factor(df_wide$Version)
+df_wide$Move = as.integer(df_wide$Move)
+df_wide$Pleasure = as.integer(df_wide$Pleasure)
+df_wide$Complexity = as.factor(df_wide$Complexity)
+df_wide = within(df_wide, rm(Block_cond, Block_order, Block, TrigVal))
+df_wide$ID = as.character(df_wide$ID)
+
+#adding group column based on ID
+df_wide = df_wide %>%
+           mutate(Group = case_when(
+            startsWith(ID, "1") ~ "CI",
+            startsWith(ID, "2") ~ "NH"))
+
+#adding wSI column based on rhythm
+df_wide = df_wide %>%
+           mutate(wSI = case_when(
+            Complexity == "Metronome" ~ "0",
+            Complexity == "L" & Version == "SN" ~ "0",
+            Complexity == "L" & Version == "SN+HH" ~ "0",
+            Complexity == "L" & Version == "SN+BD" ~ "13",
+            Complexity == "L" & Version == "SN+BD+HH" ~ "13",
+            Complexity == "M" & Version == "SN" ~ "14",
+            Complexity == "M" & Version == "SN+HH" ~ "14",
+            Complexity == "M" & Version == "SN+BD" ~ "35",
+            Complexity == "M" & Version == "SN+BD+HH" ~ "35",
+            Complexity == "H" ~ "69"))
+
+df_wide$ID = as.factor(df_wide$ID)
+df_wide$Group = as.factor(df_wide$Group)
+
+#adding round column
+df_wide$Round = "1"
+
+#creating long data for plotting
+df = df_wide %>% pivot_longer(cols=c('Move', 'Pleasure'),
+                    names_to='Rating_type',
+                    values_to='Rating')
+
+df$Complexity = factor(df$Complexity, levels = c('Metronome','L','M','H'))
+df$Condition = factor(df$Condition, levels = c('A','A+H','H'))
+df$Version = factor(df$Version, levels = c('SN+BD+HH', 'SN+BD','SN+HH','SN'))
+df$Rating_type = factor(df$Rating_type)
+
+write.csv2(df, file = 'CI_ratings.csv')
+
+
+```
+
+## Round 2 Ratings
+
+```{r include = FALSE}
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating/rating_data/CI/Round_2')
+df_wide = do.call("rbind", lapply(files_CI2,
+		read.csv, header=TRUE))
+
+df_wide$Version[df_wide$Version == "snare"] = "SN"
+df_wide$Version[df_wide$Version == "metronome"] = "SN"
+df_wide$Version[df_wide$Version == "snare+hi_hat"] = "SN+HH"
+df_wide$Version[df_wide$Version == "snare+bass_drum"] = "SN+BD"
+df_wide$Version[df_wide$Version == "snare+bass_drum+hi_hat"] = "SN+BD+HH"
+
+df_wide$Complexity[df_wide$Complexity == "baseline"] = "Metronome"
+
+df_wide$Condition[df_wide$Condition == "sound"] = "A"
+df_wide$Condition[df_wide$Condition == "haptics"] = "H"
+df_wide$Condition[df_wide$Condition == "sound_and_haptics"] = "A+H"
+
+#df_wide$Condition = as.factor(df_wide$Condition)
+df_wide$Version = as.factor(df_wide$Version)
+df_wide$Move = as.integer(df_wide$Move)
+df_wide$Pleasure = as.integer(df_wide$Pleasure)
+df_wide$Complexity = as.factor(df_wide$Complexity)
+df_wide = within(df_wide, rm(Block_cond, Block_order, Block, TrigVal))
+df_wide$ID = as.character(df_wide$ID)
+
+df_wide = df_wide %>%
+  mutate(ID = gsub('_2', '', ID))
+  
+#adding group column based on ID
+df_wide = df_wide %>%
+           mutate(Group = case_when(
+            startsWith(ID, "1") ~ "CI",
+            startsWith(ID, "2") ~ "NH"))
+
+#adding wSI column based on rhythm
+df_wide = df_wide %>%
+           mutate(wSI = case_when(
+            Complexity == "Metronome" ~ "0",
+            Complexity == "L" & Version == "SN" ~ "0",
+            Complexity == "L" & Version == "SN+HH" ~ "0",
+            Complexity == "L" & Version == "SN+BD" ~ "13",
+            Complexity == "L" & Version == "SN+BD+HH" ~ "13",
+            Complexity == "M" & Version == "SN" ~ "14",
+            Complexity == "M" & Version == "SN+HH" ~ "14",
+            Complexity == "M" & Version == "SN+BD" ~ "35",
+            Complexity == "M" & Version == "SN+BD+HH" ~ "35",
+            Complexity == "H" ~ "69"))
+
+df_wide$ID = as.factor(df_wide$ID)
+df_wide$Group = as.factor(df_wide$Group)
+
+#adding round column
+df_wide$Round = "2"
+
+#creating long data for plotting
+df = df_wide %>% pivot_longer(cols=c('Move', 'Pleasure'),
+                    names_to='Rating_type',
+                    values_to='Rating')
+
+df$Complexity = factor(df$Complexity, levels = c('Metronome','L','M','H'))
+df$Condition = factor(df$Condition, levels = c('A','A+H','H'))
+df$Version = factor(df$Version, levels = c('SN+BD+HH', 'SN+BD','SN+HH','SN'))
+df$Rating_type = factor(df$Rating_type)
+
+write.csv2(df, file = 'CI_ratings_2.csv')
+
+
+```
+
+########                               ~*~*~*~*~*~*~*~*~*~*                             ##########
+#                                       Preprocessing NH!                                        #
+##############                         *~*~*~*~*~*~*~*~*~*~                           ###########
+
+```{r include = FALSE}
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating/rating_data/NH')
+df_wide = do.call("rbind", lapply(files_NH,
+		read.csv, header=TRUE))
+
+
+df_wide$Version[df_wide$Version == "snare"] = "SN"
+df_wide$Version[df_wide$Version == "metronome"] = "SN"
+df_wide$Version[df_wide$Version == "snare+hi_hat"] = "SN+HH"
+df_wide$Version[df_wide$Version == "snare+bass_drum"] = "SN+BD"
+df_wide$Version[df_wide$Version == "snare+bass_drum+hi_hat"] = "SN+BD+HH"
+
+df_wide$Complexity[df_wide$Complexity == "baseline"] = "Metronome"
+
+df_wide$Condition[df_wide$Condition == "sound"] = "A"
+df_wide$Condition[df_wide$Condition == "haptics"] = "H"
+df_wide$Condition[df_wide$Condition == "sound_and_haptics"] = "A+H"
+
+#df_wide$Condition = as.factor(df_wide$Condition)
+df_wide$Version = as.factor(df_wide$Version)
+df_wide$Move = as.integer(df_wide$Move)
+df_wide$Pleasure = as.integer(df_wide$Pleasure)
+df_wide$Complexity = as.factor(df_wide$Complexity)
+df_wide = within(df_wide, rm(Block_cond, Block_order, Block, TrigVal))
+df_wide$ID = as.character(df_wide$ID)
+
+
+#adding group column based on ID
+df_wide = df_wide %>%
+           mutate(Group = case_when(
+            startsWith(ID, "1") ~ "CI",
+            startsWith(ID, "2") ~ "NH"))
+
+#adding wSI column based on rhythm
+df_wide = df_wide %>%
+           mutate(wSI = case_when(
+            Complexity == "Metronome" ~ "0",
+            Complexity == "L" & Version == "SN" ~ "0",
+            Complexity == "L" & Version == "SN+HH" ~ "0",
+            Complexity == "L" & Version == "SN+BD" ~ "13",
+            Complexity == "L" & Version == "SN+BD+HH" ~ "13",
+            Complexity == "M" & Version == "SN" ~ "14",
+            Complexity == "M" & Version == "SN+HH" ~ "14",
+            Complexity == "M" & Version == "SN+BD" ~ "35",
+            Complexity == "M" & Version == "SN+BD+HH" ~ "35",
+            Complexity == "H" ~ "69"))
+
+df_wide$ID = as.factor(df_wide$ID)
+df_wide$Group = as.factor(df_wide$Group)
+
+#adding round column
+df_wide$Round = "1"
+
+#creating long data for plotting
+df = df_wide %>% pivot_longer(cols=c('Move', 'Pleasure'),
+                    names_to='Rating_type',
+                    values_to='Rating')
+
+df$Complexity = factor(df$Complexity, levels = c('Metronome','L','M','H'))
+df$Condition = factor(df$Condition, levels = c('A','A+H','H'))
+df$Version = factor(df$Version, levels = c('SN+BD+HH', 'SN+BD','SN+HH','SN'))
+
+write.csv2(df, file = 'NH_ratings.csv')
+
+```
+
+## Round 2
+```{r include = FALSE}
+setwd('/Users/au555044/Desktop/CI_Groove_Project/Analyse/Rating/rating_data/NH/Round_2')
+df_wide = do.call("rbind", lapply(files_NH2,
+		read.csv, header=TRUE))
+
+
+df_wide$Version[df_wide$Version == "snare"] = "SN"
+df_wide$Version[df_wide$Version == "metronome"] = "SN"
+df_wide$Version[df_wide$Version == "snare+hi_hat"] = "SN+HH"
+df_wide$Version[df_wide$Version == "snare+bass_drum"] = "SN+BD"
+df_wide$Version[df_wide$Version == "snare+bass_drum+hi_hat"] = "SN+BD+HH"
+
+df_wide$Complexity[df_wide$Complexity == "baseline"] = "Metronome"
+
+df_wide$Condition[df_wide$Condition == "sound"] = "A"
+df_wide$Condition[df_wide$Condition == "haptics"] = "H"
+df_wide$Condition[df_wide$Condition == "sound_and_haptics"] = "A+H"
+
+#df_wide$Condition = as.factor(df_wide$Condition)
+df_wide$Version = as.factor(df_wide$Version)
+df_wide$Move = as.integer(df_wide$Move)
+df_wide$Pleasure = as.integer(df_wide$Pleasure)
+df_wide$Complexity = as.factor(df_wide$Complexity)
+df_wide = within(df_wide, rm(Block_cond, Block_order, Block, TrigVal))
+df_wide$ID = as.character(df_wide$ID)
+
+df_wide = df_wide %>%
+  mutate(ID = gsub('_2', '', ID))
+
+#adding group column based on ID
+df_wide = df_wide %>%
+           mutate(Group = case_when(
+            startsWith(ID, "1") ~ "CI",
+            startsWith(ID, "2") ~ "NH"))
+
+#adding wSI column based on rhythm
+df_wide = df_wide %>%
+           mutate(wSI = case_when(
+            Complexity == "Metronome" ~ "0",
+            Complexity == "L" & Version == "SN" ~ "0",
+            Complexity == "L" & Version == "SN+HH" ~ "0",
+            Complexity == "L" & Version == "SN+BD" ~ "13",
+            Complexity == "L" & Version == "SN+BD+HH" ~ "13",
+            Complexity == "M" & Version == "SN" ~ "14",
+            Complexity == "M" & Version == "SN+HH" ~ "14",
+            Complexity == "M" & Version == "SN+BD" ~ "35",
+            Complexity == "M" & Version == "SN+BD+HH" ~ "35",
+            Complexity == "H" ~ "69"))
+
+df_wide$ID = as.factor(df_wide$ID)
+df_wide$Group = as.factor(df_wide$Group)
+
+#adding round column
+df_wide$Round = "2"
+
+#creating long data for plotting
+df = df_wide %>% pivot_longer(cols=c('Move', 'Pleasure'),
+                    names_to='Rating_type',
+                    values_to='Rating')
+
+df$Complexity = factor(df$Complexity, levels = c('Metronome','L','M','H'))
+df$Condition = factor(df$Condition, levels = c('A','A+H','H'))
+df$Version = factor(df$Version, levels = c('SN+BD+HH', 'SN+BD','SN+HH','SN'))
+
+write.csv2(df, file = 'NH_ratings_2.csv')
+
+```
+
+
+########                               ~*~*~*~*~*~*~*~*~*~*                             ##########
+#                                            plots!                                             #
+##############                         *~*~*~*~*~*~*~*~*~*~                           ###########
+
+
+```{r message = FALSE, fig.width = 4, fig.asp =.82}
+
+par(mfrow=c(2,2))
+
+#sound_1 condition
+p1 =ggplot(subset(df, Condition %in% "A"), aes(x = Complexity, y= Rating, group = Version, colour = Version))+
+  facet_wrap(~Rating_type)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE)+
+  ylab("Rating")+xlab("Complexity") + ggtitle("Audio")
+
+p1 + theme_bw() + scale_color_brewer(palette="Dark2")
+
+
+#haptics condition
+p3 =ggplot(subset(df, Condition %in% "H"), aes(x = Complexity, y= Rating, group = Version, colour = Version))+
+  facet_wrap(~Rating_type)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE)+
+  ylab("Rating")+xlab("Complexity") + ggtitle("Haptics")
+
+p3 + theme_bw() + scale_color_brewer(palette="Dark2")
+
+#audio+haptics condition
+p4 =ggplot(subset(df, Condition %in% "A+H"), aes(x = Complexity, y= Rating, group = Version, colour = Version))+
+  facet_wrap(~Rating_type)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE)+
+  ylab("Rating")+xlab("Complexity") + ggtitle("Audio+Haptics")
+
+p4 + theme_bw() + scale_color_brewer(palette="Dark2")
+
+plot_grid(p1, p3, p4, labels = "AUTO")
+
+
+df_main <- df[!df$Complexity == "Metronome",]
+
+#checking main effects - Condition
+p5 =ggplot(df_main %>% group_by(ID, Condition, Rating_type) %>% summarise(M_rating=mean(Rating)), aes(x = Condition, y= M_rating, group = Rating_type, color = Rating_type))+
+  #facet_wrap(~Rating_type)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE)+
+  ylab("Rating")+xlab("Condition") + ggtitle("Condition")
+
+p5 + theme_bw() + scale_color_brewer(palette="Dark2")
+
+#checking main effects - Version
+p6 =ggplot(df_main %>% group_by(ID, Version, Rating_type) %>% summarise(M_rating=mean(Rating)), aes(x = Version, y= M_rating, group = Rating_type, color = Rating_type))+
+  #facet_wrap(~Rating_type)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 3), se = TRUE)+
+  ylab("Rating")+xlab("Version") + ggtitle("Version")
+
+p6 + theme_bw() + scale_color_brewer(palette="Dark2")
+
+#checking main effects - Complexity
+p7 =ggplot(df_main %>% group_by(ID, Complexity, Rating_type) %>% summarise(M_rating=mean(Rating)), aes(x = Complexity, y= M_rating, group = Rating_type, color = Rating_type))+
+  #facet_wrap(~Rating_type)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE)+
+  ylab("Rating")+xlab("Complexity") + ggtitle("Complexity")
+
+p7 + theme_bw() + scale_color_brewer(palette="Dark2")
+
+
+
+
+#With all conds in grid
+p =ggplot(df, aes(x = Complexity, y= Rating, group = Version, colour = Version))+
+  facet_grid(Rating_type~Condition)+
+  #geom_point(aes(colour = rhythmType))+
+  ylim(0,100)+
+  geom_smooth(method = "lm", formula = y ~ poly(x, 2), se = TRUE)+
+  ylab("Rating")+xlab("Complexity") + ggtitle("Ratings")
+
+p + theme_bw() + scale_color_brewer(palette="Dark2")
+
+
+
+
+
+```
+########                               ~*~*~*~*~*~*~*~*~*~*                             ##########
+#                                            analysis                                            #
+##############                         *~*~*~*~*~*~*~*~*~*~                           ###########
+
+
+Wanting to move
+```{r }
+df_wide$Condition=as.factor(df_wide$Condition)
+
+#Maybe something weird with the metronome and the version being SN? Trying here to remove the metronome trials and run the analysis without that.
+
+df_wide <- df_wide[!df_wide$Complexity == "Metronome",]
+
+df_wide$Complexity = factor(df_wide$Complexity)
+
+m1 <- lmer(Move~1+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m2 <- lmer(Move~Complexity+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m3 <- lmer(Move~Complexity+Version+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m4 <- lmer(Move~Complexity+Version+Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m5 <- lmer(Move~Complexity*Version+Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m6 <- lmer(Move~Complexity*Version+Complexity*Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m7 <- lmer(Move~Complexity*Version+Complexity*Condition+Version*Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m8 <- lmer(Move~Complexity*Condition*Version+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+
+anova(m1,m2,m3,m4,m5,m6,m7,m8)
+
+#diagnostic plots for best model
+qqnorm(resid(m4))
+hist(resid(m4))
+plot(m4)
+```
+
+Anova, post hocs
+```{r message = FALSE}
+#type III ANOVA
+anova(m4)
+
+#type II anova
+Anova(m4, type = 2,method = 'KR')
+#same pattern
+
+#posthoc contrasts main effects
+options(emmeans = NULL)
+emm_c  = emmeans(m4, list(pairwise~ Complexity), adjust = "bonferroni")
+emm_cc = emm_c[[2]]
+emm_v  = emmeans(m4, list(pairwise~ Version), adjust = "bonferroni")
+emm_vc = emm_v[[2]]
+emmeans(m4, list(pairwise~ Condition), adjust = "bonferroni")
+
+# #complexity by version interaction
+# emm_c.v = emmeans(m4, pairwise ~ Complexity | Version)
+# IC_c.v  = contrast(emm_c.v[[1]], method = "pairwise")
+# 
+# emm_v.c = emmeans(m4, pairwise ~ Version | Complexity)
+# IC_v.c  = contrast(emm_v.c[[1]], method = "pairwise")
+# 
+# rbind(emm_cc, emm_vc, IC_c.v, IC_v.c, adjust = "bonferroni")
+
+```
+
+Pleasure
+```{r include = FALSE}
+m1 <- lmer(Pleasure~1+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m2 <- lmer(Pleasure~Complexity+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m3 <- lmer(Pleasure~Complexity+Version+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m4 <- lmer(Pleasure~Complexity*Version+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m5 <- lmer(Pleasure~Complexity+Version+Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m6 <- lmer(Pleasure~Complexity*Version+Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m7 <- lmer(Pleasure~Complexity+Version*Condition+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m8 <- lmer(Pleasure~Complexity*Condition+Version+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+m9 <- lmer(Pleasure~Complexity*Condition*Version+(1|ID), data=df_wide, REML = FALSE, control = lmerControl(optimizer = "nloptwrap", calc.derivs = FALSE))
+
+anova(m1,m2,m3,m4,m5,m6,m7,m8,m9)
+
+
+#diagnostic plots for best model
+qqnorm(resid(m6))
+hist(resid(m6))
+plot(m6)
+
+```
+
+Anova, posthocs
+```{r message = FALSE}
+#type III ANOVA
+anova(m6)
+
+#type II anova
+Anova(m6, type = 2,method = 'KR')
+#same pattern
+
+#posthoc contrasts main effects
+options(emmeans = NULL)
+emm_c  = emmeans(m6, list(pairwise~ Complexity), adjust = "bonferroni")
+emm_cc = emm_c[[2]]
+emm_v  = emmeans(m6, list(pairwise~ Version), adjust = "bonferroni")
+emm_vc = emm_v[[2]]
+emmeans(m6, list(pairwise~ Condition), adjust = "bonferroni")
+
+#complexity by version interaction
+emm_c.v = emmeans(m6, pairwise ~ Complexity | Version)
+IC_c.v  = contrast(emm_c.v[[1]], method = "pairwise")
+
+emm_v.c = emmeans(m6, pairwise ~ Version | Complexity)
+IC_v.c  = contrast(emm_v.c[[1]], method = "pairwise")
+
+rbind(emm_cc, emm_vc, IC_c.v, IC_v.c, adjust = "bonferroni")
+```
